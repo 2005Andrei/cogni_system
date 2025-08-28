@@ -5,24 +5,24 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
   const [likes, setLikes] = useState(0);
   const [hasLiked, setHasLiked] = useState(false);
   const [rewatches, setRewatches] = useState(0);
-  const [localRewatches, setLocalRewatches] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [pauses, setPauses] = useState(0);
   const [hesitationStart, setHesitationStart] = useState(null);
+  const [lastScrollTime, setLastScrollTime] = useState(Date.now());
+  const [hesitationEvents, setHesitationEvents] = useState(0);
+  
   const intervalRef = useRef(null);
   const lastUpdateTime = useRef(Date.now());
   const hasTriggeredCompletion = useRef(false);
   const viewStartTime = useRef(Date.now());
-  const localRewatchTimer = useRef(null);
-  const lastLocalRewatchTime = useRef(0);
-  const rewatchCountRef = useRef(0);
+  const scrollEvents = useRef([]);
+  const lastInteractionTime = useRef(Date.now());
 
   // Reset state when reel changes
   useEffect(() => {
     return () => {
       clearInterval(intervalRef.current);
-      clearInterval(localRewatchTimer.current);
     };
   }, [index]);
 
@@ -31,28 +31,31 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
       // When reel becomes invisible, send final analytics and clear timers
       const hesitationTime = hesitationStart ? (Date.now() - hesitationStart) / 1000 : 0;
       const totalViewTime = (Date.now() - viewStartTime.current) / 1000;
+      
+      // Calculate hesitation rate based on actual hesitation events
+      const calculatedHesitationRate = totalViewTime > 0 ? hesitationEvents / totalViewTime : 0;
+      
       const interaction = {
         reel_index: index,
         watch_time: watchTime,
         completed,
         likes,
         rewatches,
-        local_rewatches: localRewatches,
         pauses,
         percentage_watched: (watchTime / reel.time) * 100,
+        was_skipped: watchTime < reel.time * 0.1, // Consider skipped if watched less than 10%
         metrics: {
           engagement: {
-            hesitation_rate: hesitationTime / (totalViewTime || 1),
-            quick_scroll_rate: totalViewTime < 1 ? 1 : 0,
+            hesitation_rate: calculatedHesitationRate,
+            quick_scroll_rate: calculateQuickScrollRate(),
             attention_retention: Math.min(watchTime / (reel.time || 1), 1),
-            rewatch_rate: (rewatches + localRewatches) / (totalViewTime || 1)
+            rewatch_rate: rewatches / (totalViewTime || 1)
           },
-          engagement_rate: (likes + rewatches + localRewatches + pauses) / (totalViewTime || 1)
+          engagement_rate: (likes + rewatches + pauses) / (totalViewTime || 1)
         }
       };
       setAnalytics(interaction);
       clearInterval(intervalRef.current);
-      clearInterval(localRewatchTimer.current);
       return;
     }
 
@@ -60,7 +63,8 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
     lastUpdateTime.current = Date.now();
     viewStartTime.current = Date.now();
     hasTriggeredCompletion.current = false;
-    rewatchCountRef.current = 0;
+    setHesitationEvents(0);
+    scrollEvents.current = [];
 
     if (!isPaused) {
       intervalRef.current = setInterval(() => {
@@ -78,23 +82,6 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
             hasTriggeredCompletion.current = true;
             onReelComplete?.();
           }
-
-          // Start local rewatch timer when watchTime exceeds reel.time
-          if (newTime >= reel.time && onVisible && !localRewatchTimer.current) {
-            localRewatchTimer.current = setInterval(() => {
-              const currentTime = Date.now();
-              // Only increment if at least 1 second has passed since last local rewatch
-              if (currentTime - lastLocalRewatchTime.current >= 1000) {
-                setLocalRewatches(prev => {
-                  const newLocalRewatches = prev + 1;
-                  rewatchCountRef.current = newLocalRewatches;
-                  console.log(`Local rewatch incremented for reel ${index}: ${newLocalRewatches}`);
-                  lastLocalRewatchTime.current = currentTime;
-                  return newLocalRewatches;
-                });
-              }
-            }, 1000);
-          }
           
           return newTime;
         });
@@ -104,38 +91,69 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
     return () => {
       console.log(`Reel ${index} is no longer visible, stopping timers`);
       clearInterval(intervalRef.current);
-      clearInterval(localRewatchTimer.current);
-      localRewatchTimer.current = null;
     };
-  }, [onVisible, reel.time, index, setAnalytics, isPaused, onReelComplete, completed]);
+  }, [onVisible, reel.time, index, setAnalytics, isPaused, onReelComplete, completed, hesitationEvents]);
+
+  // Calculate quick scroll rate based on scroll events
+  const calculateQuickScrollRate = () => {
+    if (scrollEvents.current.length < 2) return 0;
+    
+    const recentEvents = scrollEvents.current.slice(-10); // Last 10 events
+    const quickScrolls = recentEvents.filter(event => event.speed > 2); // Speed > 2 is considered quick
+    return quickScrolls.length / recentEvents.length;
+  };
+
+  // Track scroll events for hesitation detection
+  const trackScrollEvent = () => {
+    const now = Date.now();
+    const timeSinceLastScroll = (now - lastScrollTime) / 1000;
+    setLastScrollTime(now);
+    
+    // Record scroll event with speed
+    scrollEvents.current.push({
+      timestamp: now,
+      speed: timeSinceLastScroll > 0 ? 1 / timeSinceLastScroll : 0
+    });
+    
+    // Keep only last 50 events
+    if (scrollEvents.current.length > 50) {
+      scrollEvents.current.shift();
+    }
+    
+    // Detect hesitation (long pause between scrolls)
+    if (timeSinceLastScroll > 1.5) { // More than 1.5 seconds is hesitation
+      setHesitationEvents(prev => prev + 1);
+    }
+  };
 
   // Send periodic updates while visible
   useEffect(() => {
     if (onVisible) {
       const hesitationTime = hesitationStart ? (Date.now() - hesitationStart) / 1000 : 0;
       const totalViewTime = (Date.now() - viewStartTime.current) / 1000;
+      
       const interaction = {
         reel_index: index,
         watch_time: watchTime,
         completed,
         likes,
         rewatches,
-        local_rewatches: localRewatches,
         pauses,
         percentage_watched: (watchTime / reel.time) * 100,
+        was_skipped: watchTime < reel.time * 0.1, // Consider skipped if watched less than 10%
         metrics: {
           engagement: {
-            hesitation_rate: hesitationTime / (totalViewTime || 1),
-            quick_scroll_rate: totalViewTime < 1 ? 1 : 0,
+            hesitation_rate: totalViewTime > 0 ? hesitationEvents / totalViewTime : 0,
+            quick_scroll_rate: calculateQuickScrollRate(),
             attention_retention: Math.min(watchTime / (reel.time || 1), 1),
-            rewatch_rate: (rewatches + localRewatches) / (totalViewTime || 1)
+            rewatch_rate: rewatches / (totalViewTime || 1)
           },
-          engagement_rate: (likes + rewatches + localRewatches + pauses) / (totalViewTime || 1)
+          engagement_rate: (likes + rewatches + pauses) / (totalViewTime || 1)
         }
       };
       setAnalytics(interaction);
     }
-  }, [watchTime, completed, likes, rewatches, localRewatches, pauses, index, setAnalytics, onVisible, reel.time, hesitationStart]);
+  }, [watchTime, completed, likes, rewatches, pauses, index, setAnalytics, onVisible, reel.time, hesitationStart, hesitationEvents]);
 
   const handleLike = () => {
     if (!hasLiked) {
@@ -144,7 +162,6 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
       setHasLiked(true);
       
       // Immediately update analytics with like
-      const hesitationTime = hesitationStart ? (Date.now() - hesitationStart) / 1000 : 0;
       const totalViewTime = (Date.now() - viewStartTime.current) / 1000;
       const interaction = {
         reel_index: index,
@@ -152,17 +169,17 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
         completed,
         likes: newLikes,
         rewatches,
-        local_rewatches: localRewatches,
         pauses,
         percentage_watched: (watchTime / reel.time) * 100,
+        was_skipped: watchTime < reel.time * 0.1,
         metrics: {
           engagement: {
-            hesitation_rate: hesitationTime / (totalViewTime || 1),
-            quick_scroll_rate: totalViewTime < 1 ? 1 : 0,
+            hesitation_rate: totalViewTime > 0 ? hesitationEvents / totalViewTime : 0,
+            quick_scroll_rate: calculateQuickScrollRate(),
             attention_retention: Math.min(watchTime / (reel.time || 1), 1),
-            rewatch_rate: (rewatches + localRewatches) / (totalViewTime || 1)
+            rewatch_rate: rewatches / (totalViewTime || 1)
           },
-          engagement_rate: (newLikes + rewatches + localRewatches + pauses) / (totalViewTime || 1)
+          engagement_rate: (newLikes + rewatches + pauses) / (totalViewTime || 1)
         }
       };
       setAnalytics(interaction);
@@ -175,25 +192,13 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
       // Starting a pause
       setPauses(prev => prev + 1);
       setHesitationStart(Date.now());
-      clearInterval(localRewatchTimer.current);
-      localRewatchTimer.current = null;
     } else {
-      setHesitationStart(null);
-      // Restart local rewatch timer if watchTime exceeds reel.time
-      if (watchTime >= reel.time && onVisible && !localRewatchTimer.current) {
-        localRewatchTimer.current = setInterval(() => {
-          const currentTime = Date.now();
-          if (currentTime - lastLocalRewatchTime.current >= 1000) {
-            setLocalRewatches(prev => {
-              const newLocalRewatches = prev + 1;
-              rewatchCountRef.current = newLocalRewatches;
-              console.log(`Local rewatch incremented for reel ${index}: ${newLocalRewatches}`);
-              lastLocalRewatchTime.current = currentTime;
-              return newLocalRewatches;
-            });
-          }
-        }, 1000);
+      // Ending a pause - track hesitation if pause was longer than 1.5 seconds
+      const pauseDuration = (Date.now() - hesitationStart) / 1000;
+      if (pauseDuration > 1.5) {
+        setHesitationEvents(prev => prev + 1);
       }
+      setHesitationStart(null);
     }
   };
 
@@ -204,28 +209,7 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
     setCompleted(false);
     hasTriggeredCompletion.current = false;
     
-    // Clear and restart local rewatch timer
-    clearInterval(localRewatchTimer.current);
-    localRewatchTimer.current = null;
-    
-    // Restart local rewatch timer if still visible
-    if (onVisible && watchTime >= reel.time) {
-      localRewatchTimer.current = setInterval(() => {
-        const currentTime = Date.now();
-        if (currentTime - lastLocalRewatchTime.current >= 1000) {
-          setLocalRewatches(prev => {
-            const newLocalRewatches = prev + 1;
-            rewatchCountRef.current = newLocalRewatches;
-            console.log(`Local rewatch incremented for reel ${index}: ${newLocalRewatches}`);
-            lastLocalRewatchTime.current = currentTime;
-            return newLocalRewatches;
-          });
-        }
-      }, 1000);
-    }
-
     // Immediately update analytics with rewatch
-    const hesitationTime = hesitationStart ? (Date.now() - hesitationStart) / 1000 : 0;
     const totalViewTime = (Date.now() - viewStartTime.current) / 1000;
     const interaction = {
       reel_index: index,
@@ -233,17 +217,17 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
       completed: false,
       likes,
       rewatches: newRewatches,
-      local_rewatches: localRewatches,
       pauses,
       percentage_watched: (watchTime / reel.time) * 100,
+      was_skipped: false,
       metrics: {
         engagement: {
-          hesitation_rate: hesitationTime / (totalViewTime || 1),
-          quick_scroll_rate: totalViewTime < 1 ? 1 : 0,
+          hesitation_rate: totalViewTime > 0 ? hesitationEvents / totalViewTime : 0,
+          quick_scroll_rate: calculateQuickScrollRate(),
           attention_retention: Math.min(watchTime / (reel.time || 1), 1),
-          rewatch_rate: (newRewatches + localRewatches) / (totalViewTime || 1)
+          rewatch_rate: newRewatches / (totalViewTime || 1)
         },
-        engagement_rate: (likes + newRewatches + localRewatches + pauses) / (totalViewTime || 1)
+        engagement_rate: (likes + newRewatches + pauses) / (totalViewTime || 1)
       }
     };
     setAnalytics(interaction);
@@ -254,7 +238,7 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
   const totalPercentageWatched = (watchTime / reel.time) * 100;
 
   return (
-    <div className="reel">
+    <div className="reel" onWheel={trackScrollEvent}>
       <div className="reel-label">{reel.label}</div>
       <div className="reel-tags">
         {reel.tags.map(tag => (
@@ -270,7 +254,7 @@ function Reel({ reel, index, onVisible, setAnalytics, scrollToReel, onReelComple
         <span>Duration: {reel.time}s</span>
         <span>Watched: {totalPercentageWatched.toFixed(1)}%</span>
         <span>Rewatches: {rewatches}</span>
-        <span>Local Rewatches: {localRewatches}</span>
+        <span>Hesitation Events: {hesitationEvents}</span>
       </div>
       <div className="reel-actions">
         <button onClick={handleLike} disabled={hasLiked}>

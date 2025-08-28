@@ -1,0 +1,42 @@
+.analytics-panel {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 300px;
+  max-height: 600px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow-x: scroll;
+  overflow-y: hidden;
+}
+
+.analytics-panel h2 {
+  margin-top: 0;
+  font-size: 1.5em;
+  color: #333;
+}
+
+.analytics-item {
+  margin-bottom: 15px;
+}
+
+.analytics-item strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #555;
+}
+
+.analytics-item ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.analytics-item li {
+  margin-bottom: 5px;
+  color: #666;
+}

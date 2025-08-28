@@ -5,6 +5,7 @@ from datetime import datetime
 import logging
 import os
 from threading import Lock
+import math
 
 app = Flask(__name__)
 CORS(app)
@@ -87,6 +88,12 @@ def save_json_file(file_path, data, lock=None):
             app.logger.info(f"Restored {file_path} from backup")
         raise
 
+# Calculate rewatches based on percentage watched
+def calculate_rewatches(percentage_watched):
+    if percentage_watched < 100:
+        return 0
+    return math.floor((percentage_watched - 100) / 100)
+
 # Load reels from JSON file
 def load_reels():
     return load_json_file(REELS_FILE)
@@ -141,16 +148,19 @@ def get_reel(index):
             session_data = load_session_interactions(session_id)
             engagement = interaction.get('metrics', {}).get('engagement', {})
             
-            # Create interaction entry (excluding session_id)
+            # Calculate rewatches based on percentage watched
+            percentage_watched = interaction.get('percentage_watched', 0)
+            calculated_rewatches = calculate_rewatches(percentage_watched)
+            
+            # Create interaction entry (excluding session_id and local_rewatches)
             interaction_entry = {
                 'reel_index': interaction.get('reel_index'),
                 'watch_time': interaction.get('watch_time', 0),
                 'completed': interaction.get('completed', False),
                 'likes': interaction.get('likes', 0),
-                'rewatches': interaction.get('rewatches', 0),
-                'local_rewatches': interaction.get('local_rewatches', 0),
+                'rewatches': calculated_rewatches,  # Use calculated rewatches instead of local_rewatches
                 'pauses': interaction.get('pauses', 0),
-                'percentage_watched': interaction.get('percentage_watched', 0),
+                'percentage_watched': percentage_watched,
                 'scroll_speed': interaction.get('scroll_speed', 0),
                 'was_skipped': interaction.get('was_skipped', False),
                 'session_duration': interaction.get('session_duration', 0),
@@ -211,16 +221,19 @@ def save_interaction():
         # Load existing interactions for the session
         session_data = load_session_interactions(session_id)
         
-        # Create interaction entry (excluding session_id)
+        # Calculate rewatches based on percentage watched
+        percentage_watched = interaction.get('percentage_watched', 0)
+        calculated_rewatches = calculate_rewatches(percentage_watched)
+        
+        # Create interaction entry (excluding session_id and local_rewatches)
         interaction_entry = {
             'reel_index': interaction.get('reel_index'),
             'watch_time': interaction.get('watch_time', 0),
             'completed': interaction.get('completed', False),
             'likes': interaction.get('likes', 0),
-            'rewatches': interaction.get('rewatches', 0),
-            'local_rewatches': interaction.get('local_rewatches', 0),
+            'rewatches': calculated_rewatches,  # Use calculated rewatches instead of local_rewatches
             'pauses': interaction.get('pauses', 0),
-            'percentage_watched': interaction.get('percentage_watched', 0),
+            'percentage_watched': percentage_watched,
             'scroll_speed': interaction.get('scroll_speed', 0),
             'was_skipped': interaction.get('was_skipped', False),
             'session_duration': interaction.get('session_duration', 0),

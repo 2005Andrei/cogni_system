@@ -4,8 +4,7 @@ import Reel from './Reel';
 function ReelContainer({ reel, index, isVisible, analytics, setAnalytics, sessionStart, scrollToReel, totalReelsWatched }) {
   const currentInteraction = analytics.reel_interactions.find(i => i.reel_index === index) || {
     likes: 0,
-    rewatches: 0,
-    local_rewatches: 0
+    rewatches: 0
   };
 
   console.log('Rendering ReelContainer with reel:', { reel, currentInteraction });

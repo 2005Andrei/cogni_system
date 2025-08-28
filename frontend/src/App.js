@@ -31,7 +31,7 @@ function App() {
   const scrollTimestamps = useRef([]);
   const lastScrollTime = useRef(Date.now());
 
-  // Keep refs updated with current state
+  
   useEffect(() => {
     analyticsRef.current = analytics;
   }, [analytics]);
@@ -61,8 +61,8 @@ function App() {
   useEffect(() => {
     console.log('App mounted, fetching initial data');
     
-    // Fetch total reel count
-    axios.get('http://localhost:5000/api/reel_count')
+    
+    axios.get('http://127.0.0.1:5000/api/reel_count')
       .then(response => {
         console.log('Reel count response:', response.data);
         setTotalReels(response.data.count || 0);
@@ -72,8 +72,7 @@ function App() {
         setError('Failed to fetch reel count. Check backend.');
       });
 
-    // Fetch all reels for tag access
-    axios.get('http://localhost:5000/api/reels')
+    axios.get('http://127.0.0.1:5000/api/reels')
       .then(response => {
         console.log('Reels response:', response.data);
         setReels(response.data || []);
@@ -82,12 +81,12 @@ function App() {
         console.error('Reels fetch error:', err);
       });
 
-    // Fetch initial reel
+      
     fetchReel(currentReelIndex);
 
-    // Save session on unmount
+    
     return () => {
-      console.log('App unmounting, saving session');
+      console.log('saving session');
       const sessionEnd = new Date().toISOString();
       const session_length = (new Date(sessionEnd) - new Date(sessionStartRef.current)) / 1000;
       
@@ -97,7 +96,7 @@ function App() {
         ? scrollTimestamps.current.reduce((sum, entry) => sum + entry.speed, 0) / scrollTimestamps.current.length
         : 0;
 
-      axios.post('http://localhost:5000/api/session', {
+      axios.post('http://127.0.0.1:5000/api/session', {
         session_id: sessionId,
         session: {
           start_time: sessionStartRef.current,
@@ -131,7 +130,7 @@ function App() {
       }
     } : null;
 
-    axios.get(`http://localhost:5000/api/reel/${index}`, {
+    axios.get(`http://127.0.0.1:5000/api/reel/${index}`, {
       params: requestData ? { interaction: JSON.stringify(requestData.interaction) } : {}
     })
       .then(response => {
@@ -150,7 +149,7 @@ function App() {
   const saveCurrentInteraction = useCallback(() => {
     if (lastInteraction.current) {
       console.log('Saving interaction:', lastInteraction.current);
-      axios.post('http://localhost:5000/api/interaction', {
+      axios.post('http://127.0.0.1:5000/api/interaction', {
         session_id: sessionId,
         interaction: {
           ...lastInteraction.current,
@@ -179,7 +178,7 @@ function App() {
 
     if (currentInteraction) {
       console.log('Saving interaction before navigation:', currentInteraction);
-      axios.post('http://localhost:5000/api/interaction', {
+      axios.post('http://127.0.0.1:5000/api/interaction', {
         session_id: sessionId,
         interaction: currentInteraction
       }).catch(err => console.error('Failed to save interaction:', err));

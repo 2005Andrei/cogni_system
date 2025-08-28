@@ -5,7 +5,7 @@ function AnalyticsPanel({ analytics, reels }) {
 
   const totalLikes = analytics.reel_interactions.reduce((sum, interaction) => sum + (interaction.likes || 0), 0);
   const totalRewatches = analytics.reel_interactions.reduce((sum, interaction) => sum + (interaction.rewatches || 0), 0);
-  const totalLocalRewatches = analytics.reel_interactions.reduce((sum, interaction) => sum + (interaction.local_rewatches || 0), 0);
+  const totalSkips = analytics.reel_interactions.reduce((sum, interaction) => sum + (interaction.was_skipped ? 1 : 0), 0);
 
   const likedReelIndices = analytics.reel_interactions
     .filter(interaction => interaction.likes > 0)
@@ -31,7 +31,7 @@ function AnalyticsPanel({ analytics, reels }) {
         <strong>Total Rewatches:</strong> {totalRewatches}
       </div>
       <div className="analytics-item">
-        <strong>Total Local Rewatches:</strong> {totalLocalRewatches}
+        <strong>Total Skips:</strong> {totalSkips}
       </div>
       <div className="analytics-item">
         <strong>Total Replays:</strong> {analytics.total_replays}

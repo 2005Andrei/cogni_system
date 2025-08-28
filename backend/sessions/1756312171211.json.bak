@@ -1,0 +1,23 @@
+{
+  "session_id": "1756312171211",
+  "interactions": [
+    {
+      "reel_index": 0,
+      "watch_time": 7.011000000000002,
+      "completed": false,
+      "likes": 1,
+      "rewatches": 0,
+      "local_rewatches": 0,
+      "pauses": 0,
+      "percentage_watched": 11.685000000000004,
+      "scroll_speed": 0.13497098123903362,
+      "was_skipped": false,
+      "session_duration": 7.409,
+      "hesitation_rate": 0,
+      "quick_scroll_rate": 0,
+      "attention_retention": 0.11685000000000004,
+      "rewatch_rate": 0,
+      "engagement_rate": 0.14905351021016547
+    }
+  ]
+}

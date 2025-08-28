@@ -1,0 +1,41 @@
+{
+  "session_id": "1756313186744",
+  "interactions": [
+    {
+      "reel_index": 0,
+      "watch_time": 0,
+      "completed": false,
+      "likes": 0,
+      "rewatches": 0,
+      "local_rewatches": 0,
+      "pauses": 0,
+      "percentage_watched": 0,
+      "scroll_speed": 0.01105277701022382,
+      "was_skipped": false,
+      "session_duration": 90.475,
+      "hesitation_rate": 0,
+      "quick_scroll_rate": 0,
+      "attention_retention": 0,
+      "rewatch_rate": 0,
+      "engagement_rate": 0
+    },
+    {
+      "reel_index": 1,
+      "watch_time": 0,
+      "completed": false,
+      "likes": 0,
+      "rewatches": 0,
+      "local_rewatches": 0,
+      "pauses": 0,
+      "percentage_watched": 0,
+      "scroll_speed": 0.7396449704142012,
+      "was_skipped": false,
+      "session_duration": 91.827,
+      "hesitation_rate": 0,
+      "quick_scroll_rate": 1,
+      "attention_retention": 0,
+      "rewatch_rate": 0,
+      "engagement_rate": 0
+    }
+  ]
+}

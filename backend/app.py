@@ -6,6 +6,9 @@ import logging
 import os
 from threading import Lock
 import math
+import random
+from services.recommendation_engine import get_recommended_batch
+
 
 app = Flask(__name__)
 CORS(app)
@@ -124,6 +127,32 @@ def save_session_interactions(session_id, data):
     except Exception as e:
         app.logger.error(f"Failed to save session interactions to {file_path}: {str(e)}")
         raise
+
+@app.route('/api/reels/batch', methods=['GET'])
+def get_reels_batch():
+    try:
+        session_id = request.args.get('session_id')
+        current_index = int(request.args.get('current_index', 0))
+        batch_size = int(request.args.get('batch_size', 5))
+        
+        
+        all_reels = load_reels()
+        
+        if len(all_reels) <= batch_size:
+            batch_reels = all_reels
+        else:
+            batch_reels = random.sample(all_reels, batch_size)
+        
+        app.logger.info(f"Returning batch of {len(batch_reels)} reels for session {session_id}")
+        
+        return jsonify({
+            'reels': batch_reels,
+            'next_index': current_index + len(batch_reels),
+            'has_more': len(all_reels) > current_index + len(batch_reels)
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting reel batch: {str(e)}")
+        return jsonify({"error": f"Failed to get reel batch: {str(e)}"}), 500
 
 @app.route('/api/reels', methods=['GET'])
 def get_all_reels():

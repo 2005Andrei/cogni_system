@@ -6,9 +6,10 @@ import './App.css';
 
 function App() {
   const [currentReel, setCurrentReel] = useState(null);
-  const [reels, setReels] = useState([]);
+  const [reelBatch, setReelBatch] = useState([]);
   const [currentReelIndex, setCurrentReelIndex] = useState(0);
-  const [totalReels, setTotalReels] = useState(0);
+  const [batchStartIndex, setBatchStartIndex] = useState(0);
+  const [hasMoreReels, setHasMoreReels] = useState(true);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionId] = useState(Date.now().toString());
@@ -31,7 +32,6 @@ function App() {
   const scrollTimestamps = useRef([]);
   const lastScrollTime = useRef(Date.now());
 
-  
   useEffect(() => {
     analyticsRef.current = analytics;
   }, [analytics]);
@@ -58,32 +58,44 @@ function App() {
     return 0;
   }, []);
 
-  useEffect(() => {
-    console.log('App mounted, fetching initial data');
+  const fetchReelBatch = useCallback(async (startIndex = 0) => {
+    setLoading(true);
+    setError(null);
     
-    
-    axios.get('http://127.0.0.1:5000/api/reel_count')
-      .then(response => {
-        console.log('Reel count response:', response.data);
-        setTotalReels(response.data.count || 0);
-      })
-      .catch(err => {
-        console.error('Reel count error:', err);
-        setError('Failed to fetch reel count. Check backend.');
+    try {
+      const response = await axios.get('http://127.0.0.1:5000/api/reels/batch', {
+        params: {
+          session_id: sessionId,
+          current_index: startIndex,
+          batch_size: 5
+        }
       });
-
-    axios.get('http://127.0.0.1:5000/api/reels')
-      .then(response => {
-        console.log('Reels response:', response.data);
-        setReels(response.data || []);
-      })
-      .catch(err => {
-        console.error('Reels fetch error:', err);
-      });
-
       
-    fetchReel(currentReelIndex);
+      const batchData = response.data;
+      setReelBatch(batchData.reels);
+      setBatchStartIndex(startIndex);
+      setHasMoreReels(batchData.has_more);
+      
+      // Set the first reel from the batch as current
+      if (batchData.reels.length > 0) {
+        setCurrentReel(batchData.reels[0]);
+        setCurrentReelIndex(startIndex);
+      } else {
+        setCurrentReel(null);
+        setError('No reels available');
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Batch fetch error:', err);
+      setError('Failed to fetch reels. Check backend.');
+      setLoading(false);
+    }
+  }, [sessionId]);
 
+  useEffect(() => {
+    console.log('App mounted, fetching initial batch');
+    fetchReelBatch(0);
     
     return () => {
       console.log('saving session');
@@ -114,37 +126,7 @@ function App() {
         }
       }).catch(err => console.error('Failed to save session:', err));
     };
-  }, [sessionId]);
-
-  const fetchReel = useCallback((index, interactionData = null) => {
-    setLoading(true);
-    setError(null);
-    console.log(`Fetching reel at index: ${index}`, interactionData);
-
-    const requestData = interactionData ? {
-      interaction: {
-        ...interactionData,
-        session_id: sessionId,
-        scroll_speed: calculateScrollSpeed(),
-        session_duration: (Date.now() - new Date(sessionStartRef.current)) / 1000
-      }
-    } : null;
-
-    axios.get(`http://127.0.0.1:5000/api/reel/${index}`, {
-      params: requestData ? { interaction: JSON.stringify(requestData.interaction) } : {}
-    })
-      .then(response => {
-        console.log('Reel response:', response.data);
-        setCurrentReel(response.data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Reel fetch error:', err);
-        setError('Failed to fetch reel. No more reels or backend error.');
-        setCurrentReel(null);
-        setLoading(false);
-      });
-  }, [sessionId, calculateScrollSpeed]);
+  }, [sessionId, fetchReelBatch]);
 
   const saveCurrentInteraction = useCallback(() => {
     if (lastInteraction.current) {
@@ -162,11 +144,6 @@ function App() {
   }, [sessionId, calculateScrollSpeed]);
 
   const scrollToReel = useCallback((index) => {
-    if (index >= totalReels || index < 0) {
-      console.log(`Cannot navigate to index ${index}, totalReels: ${totalReels}`);
-      return;
-    }
-
     const scrollSpeed = calculateScrollSpeed();
 
     const currentInteraction = lastInteraction.current ? {
@@ -185,22 +162,36 @@ function App() {
       lastInteraction.current = null;
     }
 
-    if (index > currentReelIndex + 1 && !analyticsRef.current.time_to_first_skip) {
-      setAnalytics(prev => ({
-        ...prev,
-        time_to_first_skip: (Date.now() - new Date(sessionStartRef.current)) / 1000,
-        total_skips: prev.total_skips + 1
-      }));
-    } else if (index !== currentReelIndex + 1) {
-      setAnalytics(prev => ({
-        ...prev,
-        total_skips: prev.total_skips + 1
-      }));
+    // Check if we need to fetch a new batch
+    const batchRelativeIndex = index - batchStartIndex;
+    
+    if (batchRelativeIndex >= reelBatch.length && hasMoreReels) {
+      // We've reached the end of the current batch, fetch next batch
+      fetchReelBatch(batchStartIndex + reelBatch.length);
+    } else if (batchRelativeIndex < 0 && batchStartIndex > 0) {
+      // We're going backwards beyond the current batch
+      // For simplicity, we'll just not allow going back beyond current batch
+      console.log("Cannot navigate beyond current batch");
+      return;
+    } else if (batchRelativeIndex >= 0 && batchRelativeIndex < reelBatch.length) {
+      // Navigate within current batch
+      setCurrentReel(reelBatch[batchRelativeIndex]);
+      setCurrentReelIndex(index);
+      
+      if (index > currentReelIndex + 1 && !analyticsRef.current.time_to_first_skip) {
+        setAnalytics(prev => ({
+          ...prev,
+          time_to_first_skip: (Date.now() - new Date(sessionStartRef.current)) / 1000,
+          total_skips: prev.total_skips + 1
+        }));
+      } else if (index !== currentReelIndex + 1) {
+        setAnalytics(prev => ({
+          ...prev,
+          total_skips: prev.total_skips + 1
+        }));
+      }
     }
-
-    fetchReel(index, currentInteraction);
-    setCurrentReelIndex(index);
-  }, [totalReels, currentReelIndex, fetchReel, sessionId, calculateScrollSpeed]);
+  }, [reelBatch, batchStartIndex, currentReelIndex, hasMoreReels, fetchReelBatch, sessionId, calculateScrollSpeed]);
 
   const handleInteractionUpdate = useCallback((interaction) => {
     console.log('Interaction update:', interaction);
@@ -249,8 +240,7 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      console.log(`Key pressed: ${e.key}, currentIndex: ${currentReelIndex}, totalReels: ${totalReels}`);
-      if (e.key === 'ArrowDown' && currentReelIndex < totalReels - 1) {
+      if (e.key === 'ArrowDown' && (currentReelIndex < batchStartIndex + reelBatch.length - 1 || hasMoreReels)) {
         scrollToReel(currentReelIndex + 1);
       } else if (e.key === 'ArrowUp' && currentReelIndex > 0) {
         scrollToReel(currentReelIndex - 1);
@@ -261,13 +251,21 @@ function App() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentReelIndex, totalReels, scrollToReel]);
+  }, [currentReelIndex, batchStartIndex, reelBatch.length, hasMoreReels, scrollToReel]);
 
-  console.log('App render state:', { currentReel, loading, error, totalReels });
+  console.log('App render state:', { 
+    currentReel, 
+    loading, 
+    error, 
+    reelBatch, 
+    batchStartIndex, 
+    currentReelIndex,
+    hasMoreReels
+  });
 
   return (
     <div className="App">
-      <AnalyticsPanel analytics={analytics} reels={reels} />
+      <AnalyticsPanel analytics={analytics} reels={reelBatch} />
       {loading && <div className="error-message">Loading...</div>}
       {error && <div className="error-message">{error}</div>}
       {!loading && !error && !currentReel && (
@@ -285,14 +283,14 @@ function App() {
           totalReelsWatched={analytics.reels_watched}
           onReelComplete={() => {
             setTimeout(() => {
-              if (currentReelIndex < totalReels - 1) {
+              if (currentReelIndex < batchStartIndex + reelBatch.length - 1 || hasMoreReels) {
                 scrollToReel(currentReelIndex + 1);
               }
             }, 1000);
           }}
         />
       )}
-      {currentReel && currentReelIndex < totalReels - 1 && (
+      {currentReel && (currentReelIndex < batchStartIndex + reelBatch.length - 1 || hasMoreReels) && (
         <button
           className="next-reel-btn"
           onClick={() => scrollToReel(currentReelIndex + 1)}
